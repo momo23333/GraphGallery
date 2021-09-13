@@ -5,7 +5,7 @@ from torch import optim
 from graphgallery.nn.models import TorchKeras
 from graphgallery.nn.layers.pytorch import GCNConv, Sequential, activations
 from graphgallery.nn.metrics.pytorch import Accuracy
-from torch_geometric.utils import dropout_adj
+# from torch_geometric.utils import dropout_adj
 
 
 class GCN(TorchKeras):
@@ -42,7 +42,7 @@ class GCN(TorchKeras):
 
     def forward(self, x, adj):
         return self.conv(x, adj)
-    
+
 
 class DropEdge(TorchKeras):
     def __init__(self,
@@ -85,6 +85,5 @@ class DropEdge(TorchKeras):
             edge_weight = adj.values()
             edge_index, edge_weight = dropout_adj(edge_index, edge_weight, p=self.p, force_undirected=True)
             adj = torch.sparse.FloatTensor(edge_index, edge_weight, adj.size())
-            
+
         return self.conv(x, adj)
-    
