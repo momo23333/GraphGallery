@@ -1,8 +1,27 @@
+# The following codes are mainly modified from tensorflow and some changes are made.
+# You may refer to tensorflow for more details:
+#
+#     https://github.com/tensorflow/tensorflow
+#
+# Copyright The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import time
 import sys
+import os
 import numpy as np
-
-import graphgallery as gg
 
 
 class Progbar:
@@ -23,7 +42,6 @@ class Progbar:
                  interval=0.05,
                  unit_name='step'):
 
-        assert gg.is_intscalar(target), target
         self.target = target
         self.width = width
         self.verbose = verbose
@@ -49,6 +67,9 @@ class Progbar:
             finalize: Whether this is the last update for the progress bar. If
               `None`, defaults to `current >= self.target`.
         """
+        if not self.verbose:
+            return
+
         if finalize is None:
             if self.target is None:
                 finalize = False
@@ -81,7 +102,6 @@ class Progbar:
         else:
             delta = ' %.2fus' % (delta * 1e6)
         info = ' - Total:%s' % delta
-
         if self.verbose == 1:
             if now - self._last_update < self.interval and not finalize:
                 return
@@ -110,7 +130,6 @@ class Progbar:
                 bar = '%7d/Unknown' % current
 
             self._total_width = len(bar)
-            sys.stdout.write(bar)
 
             if current:
                 time_per_unit = (now - self._start) / current
@@ -144,8 +163,7 @@ class Progbar:
 
             if finalize:
                 info += '\n'
-
-            sys.stdout.write(info)
+            sys.stdout.write(f'{bar}{info}')
             sys.stdout.flush()
 
         elif self.verbose == 2:
