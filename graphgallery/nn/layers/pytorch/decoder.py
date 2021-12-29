@@ -48,3 +48,18 @@ class MergeDecoder(nn.Module):
         x = torch.cat([x1, x2], dim=1)
         h = self.act(self.fc1(x))
         return self.fc2(h)
+
+    
+class DistMultDecoder(nn.Module):
+    def __init__(self, num_relations, hid):
+        super().__init__()
+        self.rel_emb = nn.Parameter(torch.Tensor(num_relations, hid))
+        
+        nn.init.xavier_normal_(self.rel_emb)
+        
+    def forward(self, edge_index, edge_type):
+        x1 = z[edge_index[0]]
+        x2 = z[edge_index[1]]
+        rel = self.rel_emb[edge_type]
+        
+        return torch.sum(x1 * rel * x2, dim=1)
