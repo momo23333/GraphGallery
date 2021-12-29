@@ -5,3 +5,4 @@ from .pdn import PDN
 from .graphsage import GraphSAGE
 from .gae import GAE, VGAE
 from .median import MedianGCN
+from .rgcn import RGCN
