@@ -16,11 +16,11 @@ from six.moves.urllib.request import urlretrieve
 
 from graphgallery.utils import Progbar
 
-__all__ = ['load_pickle', 'dump_pickle',
-           'download_file', 'files_exist',
-           'makedirs', 'makedirs_from_filepath', 'makedirs_rm_exist',
-           'extractall', 'remove',
-           'load_npz', 'read_csv', 'read_json', 'get_file',
+__all__ = ["load_pickle", "dump_pickle",
+           "download_file", "files_exist",
+           "makedirs", "makedirs_from_filepath", "makedirs_rm_exist",
+           "extractall", "remove",
+           "load_npz", "read_csv", "read_json", "get_file",
            ]
 
 
@@ -129,7 +129,8 @@ def get_file(fname,
     """Downloads a file from a URL if it not already in the cache.
 
     By default the file at the url `origin` is downloaded to the
-    cache_dir `~/.graphgallery`, placed in the cache_subdir `datasets`,
+    cache_dir `~/.graphgallery` or '/tmp/.graphgallery', 
+    placed in the cache_subdir `datasets`,
     and given the filename `fname`. The final location of a file
     `example.txt` would therefore be `~/.graphgallery/datasets/example.txt`.
 
@@ -266,9 +267,14 @@ def load_npz(filepath):
     if osp.isfile(filepath):
         with np.load(filepath, allow_pickle=True) as loader:
             loader = dict(loader)
+
             for k, v in loader.items():
                 if v.dtype.kind in {'O', 'U'}:
                     loader[k] = v.tolist()
+            if 'node_attr' in loader:
+                loader['attr_matrix'] = loader.pop('node_attr')
+            if 'node_label' in loader:
+                loader['label'] = loader.pop('node_label')
             return loader
     else:
         raise ValueError(f"{filepath} doesn't exist.")

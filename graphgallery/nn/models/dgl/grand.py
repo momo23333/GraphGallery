@@ -1,13 +1,9 @@
 import torch
-import numpy as np
 import dgl.function as fn
 
 import torch.nn as nn
-from torch import optim
 
-from graphgallery.nn.models import TorchEngine
 from graphgallery.nn.layers.pytorch import activations
-from graphgallery.nn.metrics.pytorch import Accuracy
 
 
 def drop_node(feats, drop_rate, training):
@@ -59,7 +55,7 @@ def GRANDConv(graph, feats, order):
     return y / (order + 1)
 
 
-class GRAND(TorchEngine):
+class GRAND(nn.Module):
     def __init__(self,
                  in_features,
                  out_features,
@@ -70,8 +66,6 @@ class GRAND(TorchEngine):
                  K=4,
                  temp=0.5,
                  lam=1.,
-                 weight_decay=5e-4,
-                 lr=0.01,
                  bias=False,
                  bn=False):
 
@@ -91,15 +85,12 @@ class GRAND(TorchEngine):
             mlp.append(nn.BatchNorm1d(in_features))
         mlp.append(nn.Linear(in_features, out_features, bias=bias))
         self.mlp = mlp = nn.Sequential(*mlp)
-        self.compile(loss=nn.CrossEntropyLoss(),
-                     optimizer=optim.Adam(mlp.parameters(),
-                                          weight_decay=weight_decay, lr=lr),
-                     metrics=[Accuracy()])
-        self.S = S
+
         self.K = K
         self.temp = temp
         self.lam = lam
         self.dropout = dropout
+        self.S = S
 
     def forward(self, feats, graph):
         X = feats
@@ -118,31 +109,3 @@ class GRAND(TorchEngine):
             X = GRANDConv(graph, drop_feat, self.K)
 
             return self.mlp(X)
-
-    def compute_loss(self, output_dict, y):
-        if self.training:
-            zs = output_dict['z']
-            preds = output_dict['pred']
-            loss_consis = consis_loss(zs, temp=self.temp, lam=self.lam)
-            loss_sup = 0.
-            for pred in preds:
-                loss_sup += self.loss(pred, y)
-            loss_sup = loss_sup / len(zs)
-            output_dict['pred'] = preds[0]
-            return loss_sup + loss_consis
-        else:
-            return super().compute_loss(output_dict, y)
-
-
-def consis_loss(logps, temp=0.5, lam=1.):
-    ps = [torch.exp(p) for p in logps]
-    ps = torch.stack(ps, dim=2)
-
-    avg_p = torch.mean(ps, dim=2)
-    sharp_p = (torch.pow(avg_p, 1. / temp) / torch.sum(torch.pow(avg_p, 1. / temp), dim=1, keepdim=True)).detach()
-
-    sharp_p = sharp_p.unsqueeze(2)
-    loss = torch.mean(torch.sum(torch.pow(ps - sharp_p, 2), dim=1, keepdim=True))
-
-    loss = lam * loss
-    return loss

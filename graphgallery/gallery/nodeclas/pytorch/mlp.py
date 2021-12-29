@@ -1,20 +1,19 @@
 from graphgallery.data.sequence import FullBatchSequence
 from graphgallery import functional as gf
 from graphgallery.gallery.nodeclas import PyTorch
-from graphgallery.gallery import Trainer
-from graphgallery.nn.models import get_model
+from graphgallery.gallery.nodeclas import NodeClasTrainer
 
 
 @PyTorch.register()
-class MLP(Trainer):
+class MLP(NodeClasTrainer):
 
     def data_step(self,
-                  attr_transform=None):
+                  feat_transform=None):
 
         graph = self.graph
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X = gf.astensors(node_attr, device=self.data_device)
+        X = gf.astensors(attr_matrix, device=self.data_device)
 
         # ``A`` and ``X`` are cached for later use
         self.register_cache(X=X)
@@ -28,8 +27,8 @@ class MLP(Trainer):
                    bias=False):
 
         model = get_model("MLP", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
+        model = model(self.graph.num_feats,
+                      self.graph.num_classes,
                       hids=hids,
                       acts=acts,
                       dropout=dropout,
@@ -41,7 +40,7 @@ class MLP(Trainer):
 
     def train_loader(self, index):
 
-        labels = self.graph.node_label[index]
+        labels = self.graph.label[index]
         sequence = FullBatchSequence(inputs=[self.cache.X],
                                      y=labels,
                                      out_index=index,

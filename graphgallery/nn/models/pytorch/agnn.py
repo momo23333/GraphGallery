@@ -1,12 +1,8 @@
 import torch.nn as nn
-from torch import optim
-
-from graphgallery.nn.models import TorchEngine
 from graphgallery.nn.layers.pytorch import Sequential, activations, AGNNConv
-from graphgallery.nn.metrics.pytorch import Accuracy
 
 
-class AGNN(TorchEngine):
+class AGNN(nn.Module):
 
     def __init__(self,
                  in_features,
@@ -16,8 +12,6 @@ class AGNN(TorchEngine):
                  num_attn=2,
                  acts=['relu'],
                  dropout=0.5,
-                 weight_decay=5e-4,
-                 lr=0.01,
                  bias=False):
         super().__init__()
         conv = []
@@ -38,12 +32,6 @@ class AGNN(TorchEngine):
         conv.append(nn.Dropout(dropout))
         conv = Sequential(*conv)
         self.conv = conv
-        self.compile(loss=nn.CrossEntropyLoss(),
-                     optimizer=optim.Adam([dict(params=conv[0].parameters(),
-                                                weight_decay=weight_decay),
-                                           dict(params=conv[1:].parameters(),
-                                                weight_decay=0.)], lr=lr),
-                     metrics=[Accuracy()])
 
     def forward(self, x, adj):
         return self.conv(x, adj)

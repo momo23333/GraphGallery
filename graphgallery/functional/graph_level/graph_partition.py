@@ -6,12 +6,8 @@ except ImportError:
 
 import warnings
 import numpy as np
-import networkx as nx
-import scipy.sparse as sp
-from scipy.sparse.csgraph import connected_components
-from graphgallery import intx
 
-from ..base_transforms import GraphTransform
+from ..transform import GraphTransform
 from ..transform import Transform
 
 
@@ -30,7 +26,7 @@ def random_clustering(num_nodes, num_clusters):
 def louvain_clustering(graph):
     """Partitioning graph using louvain"""
     import community
-    parts = community.community_louvain.best_partition(graph.to_networkx())
+    parts = community.community_louvain.best_partition(graph.to_networkx(directed=False))
     return list(parts.values())
 
 
@@ -49,9 +45,9 @@ def graph_partition(graph, num_clusters: int = None, partition: str = 'metis'):
     assert partition in {'metis', 'random', 'louvain'}, " only one of {'metis', 'random', 'louvain'} is accepted as `partition` argument."
 
     adj_matrix = graph.adj_matrix
-    node_attr = graph.node_attr
+    attr_matrix = graph.attr_matrix
     if num_clusters is None and partition != 'louvain':
-        num_clusters = graph.num_node_classes
+        num_clusters = graph.num_classes
     # partition graph
     if partition == 'metis':
         if pymetis is None:
@@ -78,7 +74,7 @@ def graph_partition(graph, num_clusters: int = None, partition: str = 'metis'):
         mapper.update({old_id: new_id for new_id, old_id in enumerate(nodes)})
 
         mini_adj = adj_matrix[nodes][:, nodes]
-        mini_x = node_attr[nodes]
+        mini_x = attr_matrix[nodes]
 
         batch_adj.append(mini_adj)
         batch_x.append(mini_x)

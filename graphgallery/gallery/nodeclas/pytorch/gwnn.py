@@ -1,12 +1,12 @@
+import graphgallery.nn.models.pytorch as models
 from graphgallery.data.sequence import FullBatchSequence
 from graphgallery import functional as gf
 from graphgallery.gallery.nodeclas import PyTorch
-from graphgallery.gallery import Trainer
-from graphgallery.nn.models import get_model
+from graphgallery.gallery.nodeclas import NodeClasTrainer
 
 
 @PyTorch.register()
-class GWNN(Trainer):
+class GWNN(NodeClasTrainer):
     """
         Implementation of Graph Wavelet Neural Networks (GWNN). 
         `Graph Wavelet Neural Network <https://arxiv.org/abs/1904.07785>`
@@ -18,42 +18,37 @@ class GWNN(Trainer):
 
     def data_step(self,
                   adj_transform="wavelet_basis",
-                  attr_transform=None):
+                  feat_transform=None):
 
         graph = self.graph
         adj_matrix = gf.get(adj_transform)(graph.adj_matrix)
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X, A = gf.astensors(node_attr, adj_matrix, device=self.data_device)
+        feat, adj = gf.astensors(attr_matrix, adj_matrix, device=self.data_device)
 
-        # ``A`` and ``X`` are cached for later use
-        self.register_cache(X=X, A=A)
+        # ``adj`` and ``feat`` are cached for later use
+        self.register_cache(feat=feat, adj=adj)
 
     def model_step(self,
                    hids=[16],
                    acts=['relu'],
                    dropout=0.5,
-                   weight_decay=5e-4,
-                   lr=0.01,
                    bias=False):
 
-        model = get_model("GWNN", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
-                      self.graph.num_nodes,
-                      hids=hids,
-                      acts=acts,
-                      dropout=dropout,
-                      weight_decay=weight_decay,
-                      lr=lr,
-                      bias=bias)
+        model = models.GWNN(self.graph.num_feats,
+                            self.graph.num_classes,
+                            self.graph.num_nodes,
+                            hids=hids,
+                            acts=acts,
+                            dropout=dropout,
+                            bias=bias)
 
         return model
 
-    def train_loader(self, index):
+    def config_train_data(self, index):
 
-        labels = self.graph.node_label[index]
-        sequence = FullBatchSequence([self.cache.X, *self.cache.A],
+        labels = self.graph.label[index]
+        sequence = FullBatchSequence([self.cache.feat, *self.cache.adj],
                                      labels,
                                      out_index=index,
                                      device=self.data_device)

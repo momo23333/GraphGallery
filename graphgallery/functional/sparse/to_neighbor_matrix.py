@@ -3,23 +3,23 @@ import scipy.sparse as sp
 
 import numba
 from numba import njit
-from ..base_transforms import SparseTransform
+from ..transform import SparseTransform
 from ..transform import Transform
-from ..sparse import add_selfloops, eliminate_selfloops
+from ..sparse import add_self_loop, remove_self_loop
 
 
 @Transform.register()
 class ToNeighborMatrix(SparseTransform):
 
     def __init__(self, max_degree: int = 25,
-                 selfloop: bool = True,
+                 self_loop: bool = True,
                  add_dummy: bool = True):
         super().__init__()
         self.collect(locals())
 
     def __call__(self, adj_matrix: sp.csr_matrix):
         return to_neighbor_matrix(adj_matrix, max_degree=self.max_degree,
-                                  selfloop=self.selfloop, add_dummy=self.add_dummy)
+                                  self_loop=self.self_loop, add_dummy=self.add_dummy)
 
 
 @njit
@@ -43,11 +43,11 @@ def sample(indices, indptr, max_degree=25, add_dummy=True):
 
 
 def to_neighbor_matrix(adj_matrix: sp.csr_matrix, max_degree: int = 25,
-                       selfloop: bool = True, add_dummy=True):
-    if selfloop:
-        adj_matrix = add_selfloops(adj_matrix)
+                       self_loop: bool = True, add_dummy=True):
+    if self_loop:
+        adj_matrix = add_self_loop(adj_matrix)
     else:
-        adj_matrix = eliminate_selfloops(adj_matrix)
+        adj_matrix = remove_self_loop(adj_matrix)
 
     M = sample(adj_matrix.indices, adj_matrix.indptr, max_degree=max_degree, add_dummy=add_dummy)
     np.random.shuffle(M.T)

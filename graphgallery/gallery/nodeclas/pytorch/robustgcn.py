@@ -1,12 +1,13 @@
+import torch
+import graphgallery.nn.models.pytorch as models
 from graphgallery.data.sequence import FullBatchSequence
 from graphgallery import functional as gf
 from graphgallery.gallery.nodeclas import PyTorch
-from graphgallery.gallery import Trainer
-from graphgallery.nn.models import get_model
+from graphgallery.gallery.nodeclas import NodeClasTrainer
 
 
 @PyTorch.register()
-class RobustGCN(Trainer):
+class RobustGCN(NodeClasTrainer):
     """
         Implementation of Robust Graph Convolutional Networks (RobustGCN). 
         `Robust Graph Convolutional Networks Against Adversarial Attacks 
@@ -17,13 +18,13 @@ class RobustGCN(Trainer):
 
     def data_step(self,
                   adj_transform=("normalize_adj", dict(rate=[-0.5, -1.0])),
-                  attr_transform=None):
+                  feat_transform=None):
 
         graph = self.graph
         adj_matrix = gf.get(adj_transform)(graph.adj_matrix)
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X, A = gf.astensors(node_attr, adj_matrix, device=self.data_device)
+        X, A = gf.astensors(attr_matrix, adj_matrix, device=self.data_device)
 
         # ``A`` and ``X`` are cached for later use
         self.register_cache(X=X, A=A)
@@ -32,31 +33,58 @@ class RobustGCN(Trainer):
                    hids=[64],
                    acts=['relu'],
                    dropout=0.5,
-                   weight_decay=5e-4,
-                   lr=0.01,
-                   kl=5e-4,
                    gamma=1.,
                    bias=False):
 
-        model = get_model("RobustGCN", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
-                      hids=hids,
-                      acts=acts,
-                      dropout=dropout,
-                      weight_decay=weight_decay,
-                      kl=kl,
-                      gamma=gamma,
-                      lr=lr,
-                      bias=bias)
+        model = models.RobustGCN(self.graph.num_feats,
+                                 self.graph.num_classes,
+                                 hids=hids,
+                                 acts=acts,
+                                 dropout=dropout,
+                                 gamma=gamma,
+                                 bias=bias)
 
         return model
 
-    def train_loader(self, index):
+    def config_train_data(self, index):
 
-        labels = self.graph.node_label[index]
+        labels = self.graph.label[index]
         sequence = FullBatchSequence([self.cache.X, *self.cache.A],
                                      labels,
                                      out_index=index,
                                      device=self.data_device)
         return sequence
+
+    def train_step(self, dataloader):
+        loss_fn = self.loss
+        model = self.model
+
+        self.reset_metrics()
+        model.train()
+
+        kl = self.cfg.get('kl', 5e-4)
+
+        for epoch, batch in enumerate(dataloader):
+            self.callbacks.on_train_batch_begin(epoch)
+            x, y, out_index = self.unravel_batch(batch)
+            x = self.to_device(x)
+            y = self.to_device(y)
+
+            if not isinstance(x, tuple):
+                x = x,
+            out = model(*x)[out_index]
+            # ================= add KL loss here =============================
+            mean, var = model.mean, model.var
+            kl_loss = -0.5 * torch.sum(torch.mean(1 + torch.log(var + 1e-8) -
+                                                  mean.pow(2) + var, dim=1))
+            loss = loss_fn(out, y) + kl * kl_loss
+            # ===============================================================
+            loss.backward()
+            for metric in self.metrics:
+                metric.update_state(y.cpu(), out.detach().cpu())
+            self.callbacks.on_train_batch_end(epoch)
+
+        metrics = [metric.result() for metric in self.metrics]
+        results = [loss.cpu().item()] + metrics
+
+        return dict(zip(self.metrics_names, results))

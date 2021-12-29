@@ -16,8 +16,8 @@ class HomoGraph(BaseGraph):
 
     def __init__(self,
                  adj_matrix=None,
-                 node_attr=None,
-                 node_label=None,
+                 attr_matrix=None,
+                 label=None,
                  *,
                  node_graph_label=None,
                  graph_attr=None,
@@ -34,12 +34,12 @@ class HomoGraph(BaseGraph):
             shape [num_nodes, num_nodes] or 
             shape [num_graphs, num_nodes, num_nodes].            
             adjacency matrix in CSR format.
-        node_attr: single (Graph) or a list of (MultiGraph) 
+        attr_matrix: single (Graph) or a list of (MultiGraph) 
             sp.csr_matrix or np.ndarray, optional
-            shape [num_nodes, num_node_attrs] or
-            shape [num_graphs, num_nodes, num_node_attrs].            
+            shape [num_nodes, num_feats] or
+            shape [num_graphs, num_nodes, num_feats].            
             Node attribute matrix in CSR or Numpy format.
-        node_label: single (Graph) or a list of (MultiGraph) 
+        label: single (Graph) or a list of (MultiGraph) 
             np.ndarray, optional.
             shape [num_nodes] or shape [num_graphs, num_nodes].            
             where each entry represents respective node's label(s).
@@ -91,22 +91,12 @@ class HomoGraph(BaseGraph):
         return get_num_graphs(self.adj_matrix)
 
     @property
-    def num_node_attrs(self) -> int:
-        return get_num_node_attrs(self.node_attr)
-
-    @property
-    def num_node_classes(self) -> int:
-        return get_num_node_classes(self.node_label)
-
-    @property
-    def num_attrs(self) -> int:
-        """Alias of num_node_attrs."""
-        return self.num_node_attrs
+    def num_feats(self) -> int:
+        return get_num_feats(self.attr_matrix)
 
     @property
     def num_classes(self) -> int:
-        """Alias of num_node_classes."""
-        return self.num_node_classes
+        return get_num_classes(self.label)
 
     @property
     def A(self):
@@ -115,13 +105,13 @@ class HomoGraph(BaseGraph):
 
     @property
     def x(self):
-        """Alias of node_attr."""
-        return self.nx
+        """Alias of attr_matrix."""
+        return self.attr_matrix
 
     @property
-    def nx(self):
-        """Alias of node_attr."""
-        return self.node_attr
+    def feat(self):
+        """Alias of attr_matrix."""
+        return self.attr_matrix
 
     @property
     def gx(self):
@@ -130,13 +120,8 @@ class HomoGraph(BaseGraph):
 
     @property
     def y(self):
-        """Alias of node_label."""
-        return self.ny
-
-    @property
-    def ny(self):
-        """Alias of node_label."""
-        return self.node_label
+        """Alias of label."""
+        return self.label
 
     @property
     def gy(self):
@@ -152,19 +137,19 @@ class HomoGraph(BaseGraph):
     def degree(self):
         return gf.degree(self.adj_matrix)
 
-    def eliminate_selfloops(self):
+    def remove_self_loop(self):
         """Remove self-loops from the adjacency matrix."""
         g = self.copy()
         A = g.adj_matrix
         assert A is not None
-        g.adj_matrix = gf.eliminate_selfloops(A)
+        g.adj_matrix = gf.remove_self_loop(A)
         return g
 
-    def add_selfloops(self, fill_weight=1.0):
+    def add_self_loop(self, add_self_loop=True):
         g = self.copy()
         A = g.adj_matrix
         assert A is not None
-        g.adj_matrix = gf.add_selfloops(A, fill_weight=fill_weight)
+        g.adj_matrix = gf.add_self_loop(A, add_self_loop=add_self_loop)
         return g
 
     def is_directed(self) -> bool:
@@ -193,7 +178,7 @@ class HomoGraph(BaseGraph):
 
     def is_binary(self) -> bool:
         """Check if the node attribute matrix has binary attributes."""
-        return gf.is_binary(self.node_attr)
+        return gf.is_binary(self.attr_matrix)
 
     def extra_repr(self) -> str:
         excluded = {"metadata", "mapping"}

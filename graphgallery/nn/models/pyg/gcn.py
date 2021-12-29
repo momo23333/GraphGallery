@@ -1,24 +1,18 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import optim
-
-from graphgallery.nn.models import TorchEngine
 from graphgallery.nn.layers.pytorch import Sequential, activations
-from graphgallery.nn.metrics.pytorch import Accuracy
 
 from torch_geometric.nn import GCNConv
 from torch_geometric.utils import dropout_adj
 
 
-class GCN(TorchEngine):
+class GCN(nn.Module):
     def __init__(self,
                  in_features,
                  out_features,
                  hids=[16],
                  acts=['relu'],
                  dropout=0.5,
-                 weight_decay=5e-4,
-                 lr=0.01,
                  bias=True):
 
         super().__init__()
@@ -42,18 +36,14 @@ class GCN(TorchEngine):
         conv = Sequential(*conv)
 
         self.conv = conv
-        self.compile(loss=nn.CrossEntropyLoss(),
-                     optimizer=optim.Adam([dict(params=conv[1].parameters(),
-                                                weight_decay=weight_decay),
-                                           dict(params=conv[2:].parameters(),
-                                                weight_decay=0.)], lr=lr),
-                     metrics=[Accuracy()])
+        self.reg_paras = conv[1].parameters()
+        self.non_reg_paras = conv[2:].parameters()
 
     def forward(self, x, edge_index, edge_weight=None):
         return self.conv(x, edge_index, edge_weight)
 
 
-class DropEdge(TorchEngine):
+class DropEdge(nn.Module):
     def __init__(self,
                  in_features,
                  out_features,
@@ -87,12 +77,6 @@ class DropEdge(TorchEngine):
 
         self.p = p
         self.conv = conv
-        self.compile(loss=nn.CrossEntropyLoss(),
-                     optimizer=optim.Adam([dict(params=conv[1].parameters(),
-                                                weight_decay=weight_decay),
-                                           dict(params=conv[2:].parameters(),
-                                                weight_decay=0.)], lr=lr),
-                     metrics=[Accuracy()])
 
     def forward(self, x, edge_index, edge_weight=None):
         if self.training and self.p:
@@ -100,7 +84,7 @@ class DropEdge(TorchEngine):
         return self.conv(x, edge_index, edge_weight)
 
 
-class RDrop(TorchEngine):
+class RDrop(nn.Module):
     def __init__(self,
                  in_features,
                  out_features,

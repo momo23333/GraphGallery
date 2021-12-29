@@ -1,12 +1,13 @@
+import torch
+import graphgallery.nn.models.pytorch as models
 from graphgallery.data.sequence import FullBatchSequence
 from graphgallery import functional as gf
 from graphgallery.gallery.nodeclas import PyTorch
-from graphgallery.gallery import Trainer
-from graphgallery.nn.models import get_model
+from graphgallery.gallery.nodeclas import NodeClasTrainer
 
 
 @PyTorch.register()
-class APPNP(Trainer):
+class APPNP(NodeClasTrainer):
     """Implementation of approximated personalized propagation of neural 
         predictions (APPNP).
         `Predict then Propagate: Graph Neural Networks meet Personalized
@@ -17,16 +18,16 @@ class APPNP(Trainer):
 
     def data_step(self,
                   adj_transform="normalize_adj",
-                  attr_transform=None):
+                  feat_transform=None):
 
         graph = self.graph
         adj_matrix = gf.get(adj_transform)(graph.adj_matrix)
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X, A = gf.astensors(node_attr, adj_matrix, device=self.data_device)
+        feat, adj = gf.astensors(attr_matrix, adj_matrix, device=self.data_device)
 
-        # ``A`` and ``X`` are cached for later use
-        self.register_cache(X=X, A=A)
+        # ``adj`` and ``feat`` are cached for later use
+        self.register_cache(feat=feat, adj=adj)
 
     def model_step(self,
                    hids=[64],
@@ -35,38 +36,42 @@ class APPNP(Trainer):
                    K=10,
                    ppr_dropout=0.,
                    dropout=0.5,
-                   weight_decay=5e-4,
-                   lr=0.01,
                    bias=True):
 
-        model = get_model("APPNP", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
-                      hids=hids,
-                      acts=acts,
-                      alpha=alpha,
-                      K=K,
-                      ppr_dropout=ppr_dropout,
-                      dropout=dropout,
-                      weight_decay=weight_decay,
-                      lr=lr,
-                      bias=bias,
-                      approximated=True)
+        model = models.APPNP(self.graph.num_feats,
+                             self.graph.num_classes,
+                             hids=hids,
+                             acts=acts,
+                             alpha=alpha,
+                             K=K,
+                             ppr_dropout=ppr_dropout,
+                             dropout=dropout,
+                             bias=bias,
+                             approximated=True)
 
         return model
 
-    def train_loader(self, index):
+    def config_train_data(self, index):
 
-        labels = self.graph.node_label[index]
-        sequence = FullBatchSequence(inputs=[self.cache.X, self.cache.A],
+        labels = self.graph.label[index]
+        sequence = FullBatchSequence(inputs=[self.cache.feat, self.cache.adj],
                                      y=labels,
                                      out_index=index,
                                      device=self.data_device)
         return sequence
 
+    def config_optimizer(self) -> torch.optim.Optimizer:
+        lr = self.cfg.get('lr', 0.01)
+        weight_decay = self.cfg.get('weight_decay', 5e-4)
+        model = self.model
+        return torch.optim.Adam([dict(params=model.reg_paras,
+                                      weight_decay=weight_decay),
+                                 dict(params=model.non_reg_paras,
+                                      weight_decay=0.)], lr=lr)
+
 
 @PyTorch.register()
-class PPNP(Trainer):
+class PPNP(NodeClasTrainer):
     """Implementation of exact personalized propagation of neural 
         predictions (PPNP).
         `Predict then Propagate: Graph Neural Networks meet Personalized
@@ -77,45 +82,49 @@ class PPNP(Trainer):
 
     def data_step(self,
                   adj_transform="PPR",
-                  attr_transform=None):
+                  feat_transform=None):
 
         graph = self.graph
         adj_matrix = gf.get(adj_transform)(graph.adj_matrix)
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X, A = gf.astensors(node_attr, adj_matrix, device=self.data_device)
+        feat, adj = gf.astensors(attr_matrix, adj_matrix, device=self.data_device)
 
-        # ``A`` and ``X`` are cached for later use
-        self.register_cache(X=X, A=A)
+        # ``adj`` and ``feat`` are cached for later use
+        self.register_cache(feat=feat, adj=adj)
 
     def model_step(self,
                    hids=[64],
                    acts=['relu'],
                    ppr_dropout=0.,
                    dropout=0.5,
-                   weight_decay=5e-4,
-                   lr=0.01,
                    bias=True):
 
-        model = get_model("APPNP", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
-                      hids=hids,
-                      acts=acts,
-                      ppr_dropout=ppr_dropout,
-                      dropout=dropout,
-                      weight_decay=weight_decay,
-                      lr=lr,
-                      bias=bias,
-                      approximated=False)
+        model = models.APPNP(self.graph.num_feats,
+                             self.graph.num_classes,
+                             hids=hids,
+                             acts=acts,
+                             ppr_dropout=ppr_dropout,
+                             dropout=dropout,
+                             bias=bias,
+                             approximated=False)
 
         return model
 
-    def train_loader(self, index):
+    def config_train_data(self, index):
 
-        labels = self.graph.node_label[index]
-        sequence = FullBatchSequence(inputs=[self.cache.X, self.cache.A],
+        labels = self.graph.label[index]
+        sequence = FullBatchSequence(inputs=[self.cache.feat, self.cache.adj],
                                      y=labels,
                                      out_index=index,
                                      device=self.data_device)
         return sequence
+
+    def config_optimizer(self) -> torch.optim.Optimizer:
+        lr = self.cfg.get('lr', 0.01)
+        weight_decay = self.cfg.get('weight_decay', 5e-4)
+        model = self.model
+        return torch.optim.Adam([dict(params=model.reg_paras,
+                                      weight_decay=weight_decay),
+                                 dict(params=model.non_reg_paras,
+                                      weight_decay=0.)], lr=lr)

@@ -1,30 +1,21 @@
 import torch
-import numpy as np
-import torch.nn.functional as F
 import torch.nn as nn
-from torch import optim
 
-from graphgallery.nn.models import TorchEngine
 from graphgallery.nn.layers.pytorch import GCNConv, activations
-from graphgallery.nn.metrics.pytorch import Accuracy
-from graphgallery.nn.init.pytorch import glorot_uniform, zeros
+from graphgallery.nn.init import glorot_uniform, zeros
 
 
-class SimPGCN(TorchEngine):
+class SimPGCN(nn.Module):
     def __init__(self,
                  in_features,
                  out_features,
                  hids=[64],
                  acts=[None],
-                 lambda_=5.0,
                  gamma=0.1,
                  dropout=0.5,
-                 weight_decay=5e-4,
-                 lr=0.01,
                  bias=False):
 
         super().__init__()
-        self.lambda_ = lambda_
         self.gamma = gamma
         assert hids, "hids should not empty"
         layers = nn.ModuleList()
@@ -57,12 +48,8 @@ class SimPGCN(TorchEngine):
 
         # discriminator for ssl
         self.linear = nn.Linear(hids[-1], 1)
-
-        self.compile(loss=nn.CrossEntropyLoss(),
-                     optimizer=optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay),
-                     metrics=[Accuracy()])
-
         self.dropout = nn.Dropout(dropout)
+        self._adj_knn = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -86,7 +73,11 @@ class SimPGCN(TorchEngine):
 
     def forward(self, x, adj, adj_knn=None):
 
-        adj_knn = self.from_cache(adj_knn=adj_knn)
+        if adj_knn is None:
+            adj_knn = self._adj_knn
+        else:
+            self._adj_knn = adj_knn
+
         gamma = self.gamma
         h = None
 
@@ -103,33 +94,11 @@ class SimPGCN(TorchEngine):
 
         z = x
         # self.ss = torch.cat((s_i.view(1, -1), s_o.view(1, -1), gamma * Dk_i.view(1, -1), gamma * Dk_o.view(1, -1)), dim=0)
-        return dict(z=z, h=h)
-
-    def compute_loss(self, output_dict, y):
-        pred = output_dict['pred']
-
         if self.training:
-            embeddings = output_dict['h']
-            y, pseudo_labels, node_pairs = y
-            loss = self.loss(pred, y) + self.lambda_ * self.regression_loss(embeddings, pseudo_labels, node_pairs)
+            return z, h
         else:
-            loss = self.loss(pred, y)
-        return loss
+            return z
 
-    def regression_loss(self, embeddings, pseudo_labels=None, node_pairs=None):
-        pseudo_labels, node_pairs = self.from_cache(pseudo_labels=pseudo_labels,
-                                                    node_pairs=node_pairs)
-        k = 10000
-        if len(node_pairs[0]) > k:
-            sampled = np.random.choice(len(node_pairs[0]), k, replace=False)
-
-            embeddings0 = embeddings[node_pairs[0][sampled]]
-            embeddings1 = embeddings[node_pairs[1][sampled]]
-            embeddings = self.linear(torch.abs(embeddings0 - embeddings1))
-            loss = F.mse_loss(embeddings, pseudo_labels[sampled].unsqueeze(-1), reduction='mean')
-        else:
-            embeddings0 = embeddings[node_pairs[0]]
-            embeddings1 = embeddings[node_pairs[1]]
-            embeddings = self.linear(torch.abs(embeddings0 - embeddings1))
-            loss = F.mse_loss(embeddings, pseudo_labels.unsqueeze(-1), reduction='mean')
-        return loss
+    def cache_clear(self):
+        self._adj_knn = None
+        return self

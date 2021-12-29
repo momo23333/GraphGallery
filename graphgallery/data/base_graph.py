@@ -33,7 +33,7 @@ class BaseGraph:
         raise NotImplementedError
 
     @property
-    def num_node_attrs(self):
+    def num_feats(self):
         """Get the number of attribute dimensions of the nodes."""
         raise NotImplementedError
 
@@ -48,7 +48,7 @@ class BaseGraph:
         raise NotImplementedError
 
     @property
-    def num_node_classes(self):
+    def num_classes(self):
         """Get the number of node classes."""
         raise NotImplementedError
 
@@ -64,7 +64,7 @@ class BaseGraph:
 
     def is_node_attributed(self):
         """Whether the graph has node attributes"""
-        return getattr(self, "node_attr", None)
+        return getattr(self, "attr_matrix", None)
 
     def is_edge_attributed(self):
         """Whether the graph has edge attributes"""
@@ -76,7 +76,7 @@ class BaseGraph:
 
     def is_node_labeled(self):
         """Whether the graph has node labels"""
-        return getattr(self, "node_label", None)
+        return getattr(self, "label", None)
 
     def is_edge_labeled(self):
         """Whether the graph has edge labels"""
@@ -85,7 +85,7 @@ class BaseGraph:
     def is_graph_labeled(self):
         """Whether the graph has graph labels (for multiple graph)"""
         return getattr(self, "graph_label", None)
-    
+
     def is_multiple(self):
         """Whether the graph is a multiple graph instance"""
         return self.multiple
@@ -118,7 +118,7 @@ class BaseGraph:
         loader = load_npz(filepath)
         loader.pop("__class__", None)
         loader.pop("multiple", None)
-#         print(f"Loading from {filepath}", file=sys.stderr)
+        # print(f"Loading from {filepath}", file=sys.stderr)
         return cls(copy=False, **loader)
 
     def to_npz(self, filepath: str, apply_fn=sparse_apply, compressed=True):

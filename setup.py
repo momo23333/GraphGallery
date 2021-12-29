@@ -1,13 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
-import torch
 import os.path as osp
 from setuptools import setup, find_packages
-
-from torch.utils.cpp_extension import BuildExtension
-from torch.utils.cpp_extension import CppExtension, CUDAExtension, CUDA_HOME
-
-WITH_CUDA = torch.cuda.is_available() and CUDA_HOME is not None
 
 
 def get_version():
@@ -30,18 +24,16 @@ url = 'https://github.com/EdisonLeeeee/GraphGallery'
 
 
 install_requires = [
-    # Do not add pytorch and tensorflow here. User should install
-    # pytorch and tensorflow themselves, preferrably by OS's package manager, or by
+    # Do not add pytorch here. Users should install
+    # pytorch themselves, preferrably by OS's package manager, or by
     # choosing the proper pypi package name at
     # pytorch: https://pytorch.org/
-    # tensorflow: http://tensorflow.org/
     'tqdm',
     'yacs',
     'scipy',
     'numpy',
     'tabulate',
     'pandas',
-    'IPython',
     'scikit_learn>=0.21.0',
     'networkx>=2.3',
     'gensim>=3.8.0',
@@ -54,7 +46,7 @@ tests_require = ['pytest', 'pytest-cov']
 setup(
     name='graphgallery',
     version=VERSION,
-    description='A Gallery for Benchmarking Graph Neural Networks and Graph Adversarial Learning.',
+    description='A Graph-based Model Gallery for Benchmarking Graph Neural Networks.',
     author='Jintang Li',
     author_email='lijt55@mail2.sysu.edu.cn',
     long_description=open("README.md", encoding="utf-8").read(),
@@ -62,9 +54,9 @@ setup(
     url=url,
     download_url='{}/archive/{}.tar.gz'.format(url, VERSION),
     keywords=[
-        'tensorflow',
         'pytorch',
         'benchmark',
+        'model-gallery',
         'geometric-deep-learning',
         'graph-neural-networks',
     ],
@@ -75,14 +67,6 @@ setup(
     tests_require=tests_require,
     extras_require={'test': tests_require},
     packages=find_packages(exclude=("examples", "imgs", "benchmark", "test")),
-    ext_modules=[
-        CppExtension("graphgallery.sampler", sources=["csrc/cpu/neighbor_sampler_cpu.cpp"], extra_compile_args=['-g']),
-
-    ],
-    cmdclass={
-        'build_ext':
-        BuildExtension
-    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         "Intended Audience :: Science/Research",

@@ -2,17 +2,13 @@ import torch
 import itertools
 
 import numpy as np
-import scipy.sparse as sp
-
+from numbers import Number
 from typing import Any, Optional
 
 import graphgallery as gg
-from graphgallery import functional as gf
 
 __all__ = ['asarray', 'index_to_mask',
-           'repeat', 'get_length',
-           'nx_graph_to_sparse_adj',
-           'largest_indices', 'least_indices']
+           'repeat', 'get_length']
 
 
 def asarray(x: Any, dtype: Optional[str] = None) -> np.ndarray:
@@ -25,20 +21,13 @@ def asarray(x: Any, dtype: Optional[str] = None) -> np.ndarray:
 
     Returns:
     ----------
-    Integer Numpy array with dtype or `graphgallery.intx()`
+    Integer Numpy array with dtype or `'int64'`
 
     """
     if dtype is None:
-        dtype = gg.intx()
+        dtype = 'int64'
 
-    if gg.TF_ENABLED and gf.is_tensor(x, backend="tensorflow"):
-        if x.dtype != dtype:
-            import tensorflow as tf
-            return tf.cast(x, dtype=dtype)
-        else:
-            return x
-
-    if gf.is_tensor(x, backend="torch"):
+    if torch.is_tensor(x):
         if x.dtype != dtype:
             return x.to(getattr(torch, dtype))
         else:
@@ -55,17 +44,52 @@ def asarray(x: Any, dtype: Optional[str] = None) -> np.ndarray:
 
 
 def index_to_mask(indices: np.ndarray, shape: tuple) -> np.ndarray:
-    mask = np.zeros(shape, dtype=gg.boolx())
+    mask = np.zeros(shape, dtype='bool')
     mask[indices] = True
     return mask
 
 
-def repeat(src: Any, length: int = None) -> Any:
+def repeat(src: Any, length: Optional[int] = None) -> Any:
+    """repeat any objects and return iterable ones.
+
+    Parameters
+    ----------
+    src : Any
+        any objects
+    length : Optional[int], optional
+        the length to be repeated. If `None`,
+        it would return the iterable object itself, by default None
+
+    Returns
+    -------
+    Any
+        the iterable repeated object
+
+
+    Example
+    -------
+    >>> from graphwar.utils import repeat
+    # repeat for single non-iterable object
+    >>> repeat(1)
+    [1]
+    >>> repeat(1, 3)
+    [1, 1, 1]
+    >>> repeat('relu', 2)
+    ['relu', 'relu']
+    >>> repeat(None, 2)
+    [None, None]
+    # repeat for iterable object
+    >>> repeat([1, 2, 3], 2)
+    [1, 2]
+    >>> repeat([1, 2, 3], 5)
+    [1, 2, 3, 3, 3]
+
+    """
     if src == [] or src == ():
         return []
     if length is None:
         length = get_length(src)
-    if any((gg.is_scalar(src), isinstance(src, str), src is None)):
+    if any((isinstance(src, Number), isinstance(src, str), src is None)):
         return list(itertools.repeat(src, length))
     if len(src) > length:
         return src[:length]
@@ -75,55 +99,8 @@ def repeat(src: Any, length: int = None) -> Any:
 
 
 def get_length(obj: Any) -> int:
-    if gg.is_iterable(obj):
+    if isinstance(obj, (list, tuple)):
         length = len(obj)
     else:
         length = 1
     return length
-
-
-def nx_graph_to_sparse_adj(graph):
-    num_nodes = graph.number_of_nodes()
-    data = np.asarray(list(graph.edges().data('weight', default=1.0)))
-    edge_index = data[:, :2].T.astype(np.int64)
-    edge_weight = data[:, -1].T.astype(np.float32)
-    adj_matrix = sp.csr_matrix((edge_weight, edge_index), shape=(num_nodes, num_nodes))
-    return adj_matrix
-
-
-def largest_indices(array: np.ndarray, n: int) -> tuple:
-    """Returns the n largest indices from a numpy array.
-
-    Parameters:
-    ----------
-        array {np.ndarray} -- data array
-        n {int} -- number of elements to select
-
-    Returns:
-    --------
-        tuple[np.ndarray] -- tuple of ndarray
-        each ndarray is index
-    """
-    flat = array.ravel()
-    indices = np.argpartition(flat, -n)[-n:]
-    indices = indices[np.argsort(-flat[indices])]
-    return np.unravel_index(indices, array.shape)
-
-
-def least_indices(array: np.ndarray, n: int) -> tuple:
-    """Returns the n least indices from a numpy array.
-
-    Parameters:
-    ----------
-        array {np.ndarray} -- data array
-        n {int} -- number of elements to select
-
-    Returns:
-    --------
-        tuple[np.ndarray] -- tuple of ndarray
-        each ndarray is index
-    """
-    flat = array.ravel()
-    indices = np.argpartition(flat, n)[:n]
-    indices = indices[np.argsort(flat[indices])]
-    return np.unravel_index(indices, array.shape)

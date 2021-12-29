@@ -2,25 +2,62 @@ import warnings
 import numpy as np
 import scipy.sparse as sp
 
-from ..base_transforms import GraphTransform
+from ..transform import GraphTransform
 from ..transform import Transform
-from ..edge_level import singleton_filter
+from ..edge_level import asedge
 from ..sparse import remove_edge
 import graphgallery as gg
 
-__all__ = ["JaccardDetection", "CosineDetection", "SVD", "jaccard_similarity",
-           "jaccard_detection", "cosine_detection", "svd", "cosine_similarity"]
+__all__ = ["JaccardPurification", "CosinePurification", "SVD", "jaccard_similarity",
+           "jaccard_purification", "cosine_purification", "svd", "cosine_similarity"]
+
+
+_epsilon = 1e-7
+
+
+def singleton_filter(edge, adj_matrix):
+    """
+    Filter edges that, if removed, would turn one or more nodes 
+    into singleton nodes.
+
+    Parameters
+    ----------
+    edge: np.array, shape [M, 2] or [2. M], where M is the number of input edges.
+    adj_matrix: sp.sparse_matrix, shape [num_nodes, num_nodes]
+        The input adjacency matrix.
+
+    Returns
+    -------
+    np.array, shape [M, 2], 
+        the edges that removed will not generate singleton nodes.
+    """
+
+    edge = asedge(edge, shape="row_wise")  # shape [M, 2]
+    if edge.size == 0:
+        warnings.warn("No edges found.", UserWarning)
+        return edge
+
+    degs = adj_matrix.sum(1).A1
+    existing_edge = adj_matrix.tocsr(copy=False)[edge[:, 0], edge[:, 1]].A1
+
+    if existing_edge.size > 0:
+        edge_degrees = degs[edge] - 2 * existing_edge[:, None] + 1
+    else:
+        edge_degrees = degs[edge] + 1
+
+    mask = np.logical_and(edge_degrees[:, 0] > 0, edge_degrees[:, 1] > 0)
+    return edge[mask]
 
 
 def jaccard_similarity(A, B):
     intersection = np.count_nonzero(A * B, axis=1)
-    J = intersection * 1.0 / (np.count_nonzero(A, axis=1) + np.count_nonzero(B, axis=1) + intersection + gg.epsilon())
+    J = intersection * 1.0 / (np.count_nonzero(A, axis=1) + np.count_nonzero(B, axis=1) + intersection + _epsilon)
     return J
 
 
 def cosine_similarity(A, B):
     inner_product = (A * B).sum(1)
-    C = inner_product / (np.sqrt(np.square(A).sum(1)) * np.sqrt(np.square(B).sum(1)) + gg.epsilon())
+    C = inner_product / (np.sqrt(np.square(A).sum(1)) * np.sqrt(np.square(B).sum(1)) + _epsilon)
     return C
 
 # Using PyTorch
@@ -30,14 +67,14 @@ def cosine_similarity(A, B):
 #     return C
 
 
-def filter_edges_by_similarity(adj_matrix, node_attr,
+def filter_edges_by_similarity(adj_matrix, attr_matrix,
                                similarity_fn, threshold=0.01,
                                allow_singleton=False):
 
     rows, cols = adj_matrix.nonzero()
 
-    A = node_attr[rows]
-    B = node_attr[cols]
+    A = attr_matrix[rows]
+    B = attr_matrix[cols]
     S = similarity_fn(A, B)
     idx = np.where(S <= threshold)[0]
     flips = np.vstack([rows[idx], cols[idx]])
@@ -46,22 +83,22 @@ def filter_edges_by_similarity(adj_matrix, node_attr,
     return flips
 
 
-def jaccard_detection(adj_matrix, node_attr, threshold=0.01, allow_singleton=False):
-    return filter_edges_by_similarity(adj_matrix, node_attr,
+def jaccard_purification(adj_matrix, attr_matrix, threshold=0.01, allow_singleton=False):
+    return filter_edges_by_similarity(adj_matrix, attr_matrix,
                                       similarity_fn=jaccard_similarity,
                                       threshold=threshold,
                                       allow_singleton=allow_singleton)
 
 
-def cosine_detection(adj_matrix, node_attr, threshold=0.01, allow_singleton=False):
-    return filter_edges_by_similarity(adj_matrix, node_attr,
+def cosine_purification(adj_matrix, attr_matrix, threshold=0.01, allow_singleton=False):
+    return filter_edges_by_similarity(adj_matrix, attr_matrix,
                                       similarity_fn=cosine_similarity,
                                       threshold=threshold,
                                       allow_singleton=allow_singleton)
 
 
 @Transform.register()
-class JaccardDetection(GraphTransform):
+class JaccardPurification(GraphTransform):
 
     def __init__(self, threshold=0., allow_singleton=False):
         super().__init__()
@@ -75,10 +112,10 @@ class JaccardDetection(GraphTransform):
         assert not graph.is_multiple(), "NOT Supported for multiple graph"
         graph = graph.copy()
         adj_matrix = graph.adj_matrix
-        node_attr = graph.node_attr
-        structure_flips = jaccard_detection(adj_matrix, node_attr,
-                                            threshold=self.threshold,
-                                            allow_singleton=self.allow_singleton)
+        attr_matrix = graph.attr_matrix
+        structure_flips = jaccard_purification(adj_matrix, attr_matrix,
+                                               threshold=self.threshold,
+                                               allow_singleton=self.allow_singleton)
         self.flips = structure_flips
         graph.update(adj_matrix=remove_edge(adj_matrix, structure_flips, symmetric=False))
         return graph
@@ -88,7 +125,7 @@ class JaccardDetection(GraphTransform):
 
 
 @Transform.register()
-class CosineDetection(GraphTransform):
+class CosinePurification(GraphTransform):
 
     def __init__(self, threshold=0., allow_singleton=False):
         super().__init__()
@@ -102,10 +139,10 @@ class CosineDetection(GraphTransform):
         assert not graph.is_multiple(), "NOT Supported for multiple graph"
         graph = graph.copy()
         adj_matrix = graph.adj_matrix
-        node_attr = graph.node_attr
-        structure_flips = cosine_detection(adj_matrix, node_attr,
-                                           threshold=self.threshold,
-                                           allow_singleton=self.allow_singleton)
+        attr_matrix = graph.attr_matrix
+        structure_flips = cosine_purification(adj_matrix, attr_matrix,
+                                              threshold=self.threshold,
+                                              allow_singleton=self.allow_singleton)
 
         self.flips = structure_flips
         graph.update(adj_matrix=remove_edge(adj_matrix, structure_flips, symmetric=False))

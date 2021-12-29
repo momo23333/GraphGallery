@@ -1,13 +1,14 @@
+import torch
+import graphgallery.nn.models.pytorch as models
 from graphgallery.nn.layers.pytorch import SSGConv
 from graphgallery.data.sequence import FullBatchSequence
 from graphgallery import functional as gf
 from graphgallery.gallery.nodeclas import PyTorch
-from graphgallery.gallery import Trainer
-from graphgallery.nn.models import get_model
+from graphgallery.gallery.nodeclas import NodeClasTrainer
 
 
 @PyTorch.register()
-class SSGC(Trainer):
+class SSGC(NodeClasTrainer):
     """
         Implementation of Simple Spectral Graph Convolution (SSGC). 
         `Simple Spectral Graph Convolution <https://openreview.net/forum?id=CYO5T-YjWZV>`
@@ -17,41 +18,42 @@ class SSGC(Trainer):
 
     def data_step(self,
                   adj_transform="normalize_adj",
-                  attr_transform=None,
+                  feat_transform=None,
                   K=16,
                   alpha=0.1):
         graph = self.graph
         adj_matrix = gf.get(adj_transform)(graph.adj_matrix)
-        node_attr = gf.get(attr_transform)(graph.node_attr)
+        attr_matrix = gf.get(feat_transform)(graph.attr_matrix)
 
-        X, A = gf.astensors(node_attr, adj_matrix, device=self.data_device)
+        feat, adj = gf.astensors(attr_matrix, adj_matrix, device=self.data_device)
 
-        X = SSGConv(K=K, alpha=alpha)(X, A)
-        # ``A`` and ``X`` are cached for later use
-        self.register_cache(X=X, A=A)
+        feat = SSGConv(K=K, alpha=alpha)(feat, adj)
+        # ``adj`` and ``feat`` are cached for later use
+        self.register_cache(feat=feat, adj=adj)
 
     def model_step(self,
                    hids=[],
                    acts=[],
                    dropout=0.5,
-                   weight_decay=5e-5,
-                   lr=0.2,
                    bias=True):
 
-        model = get_model("MLP", self.backend)
-        model = model(self.graph.num_node_attrs,
-                      self.graph.num_node_classes,
-                      hids=hids,
-                      acts=acts,
-                      dropout=dropout,
-                      weight_decay=weight_decay,
-                      lr=lr,
-                      bias=bias)
+        model = models.MLP(self.graph.num_feats,
+                           self.graph.num_classes,
+                           hids=hids,
+                           acts=acts,
+                           dropout=dropout,
+                           bias=bias)
 
         return model
 
-    def train_loader(self, index):
-        labels = self.graph.node_label[index]
-        X = self.cache.X[index]
-        sequence = FullBatchSequence(X, labels, device=self.data_device)
+    def config_train_data(self, index):
+        labels = self.graph.label[index]
+        feat = self.cache.feat[index]
+        sequence = FullBatchSequence(feat, labels, device=self.data_device)
         return sequence
+
+    def config_optimizer(self) -> torch.optim.Optimizer:
+        lr = self.cfg.get('lr', 0.2)
+        weight_decay = self.cfg.get('weight_decay', 5e-5)
+        return torch.optim.Adam(self.model.parameters(),
+                                weight_decay=weight_decay, lr=lr)

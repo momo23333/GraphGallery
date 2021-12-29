@@ -1,24 +1,16 @@
 import torch
 import torch.nn as nn
-from torch import optim
-
 from graphgallery.nn.layers.pytorch import Sequential, activations, InnerProductDecoder
-from graphgallery.nn.metrics.pytorch import AveragePrecision, AUC
-from graphgallery.nn.losses import BCELoss
-
 from torch_geometric.nn import GCNConv
-from graphgallery.nn.models import TorchEngine
 
 
-class GAE(TorchEngine):
+class GAE(nn.Module):
     def __init__(self,
                  in_features, *,
                  out_features=16,
                  hids=[32],
                  acts=['relu'],
                  dropout=0.5,
-                 weight_decay=0.,
-                 lr=0.01,
                  bias=False):
         super().__init__()
 
@@ -41,31 +33,25 @@ class GAE(TorchEngine):
 
         self.encoder = Sequential(*encoder)
         self.decoder = InnerProductDecoder()
-        self.compile(loss=BCELoss(),
-                     optimizer=optim.Adam(self.parameters(),
-                                          weight_decay=weight_decay, lr=lr),
-                     metrics=[AUC(), AveragePrecision()])
 
     def forward(self, x, edge_index, edge_weight=None):
         z = self.encoder(x, edge_index, edge_weight)
         return z
 
-    def compute_loss(self, output_dict, y):
-        if self.training:
-            y = output_dict['y']
-        loss = self.loss(output_dict['pred'], y)
-        return loss
+    def cache_clear(self):
+        for conv in self.encoder:
+            if isinstance(conv, GCNConv):
+                conv._cached_edge_index = None
+                conv._cached_adj_t = None
 
 
-class VGAE(TorchEngine):
+class VGAE(nn.Module):
     def __init__(self,
                  in_features, *,
                  out_features=16,
                  hids=[32],
                  acts=['relu'],
                  dropout=0.5,
-                 weight_decay=0.,
-                 lr=0.01,
                  bias=False):
         super().__init__()
 
@@ -83,12 +69,7 @@ class VGAE(TorchEngine):
         self.mu_conv = GCNConv(in_features, out_features, bias=bias)
         self.logstd_conv = GCNConv(in_features, out_features, bias=bias)
         self.conv = Sequential(*conv)
-
         self.decoder = InnerProductDecoder()
-        self.compile(loss=BCELoss(),
-                     optimizer=optim.Adam(self.parameters(),
-                                          weight_decay=weight_decay, lr=lr),
-                     metrics=[AUC(), AveragePrecision()])
 
     def forward(self, x, edge_index, edge_weight=None):
         h = self.conv(x, edge_index, edge_weight)
@@ -98,21 +79,12 @@ class VGAE(TorchEngine):
             std = torch.exp(logstd)
             eps = torch.randn_like(std)
             z = eps.mul(std).add_(mu)
-            return dict(z=z, mu=mu, logstd=logstd)
+            return z, mu, logstd
         else:
-            return dict(z=mu)
+            return mu
 
-    def compute_loss(self, output_dict, y):
-        if self.training:
-            mu = output_dict.pop('mu')
-            logstd = output_dict.pop('logstd')
-            kl_loss = -0.5 / mu.size(0) * torch.mean(torch.sum(1 + 2 * logstd - mu.pow(2) - logstd.exp().pow(2), dim=1))
-            loss = self.loss(output_dict['pred'], output_dict['y']) + kl_loss
-        else:
-            loss = self.loss(output_dict['pred'], y)
-        return loss
-
-
-from graphgallery.nn.models.pytorch.gae import forward_step
-GAE.forward_step = forward_step
-VGAE.forward_step = forward_step
+    def cache_clear(self):
+        for conv in self.encoder:
+            if isinstance(conv, GCNConv):
+                conv._cached_edge_index = None
+                conv._cached_adj_t = None
